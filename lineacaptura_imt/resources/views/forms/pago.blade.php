@@ -23,6 +23,27 @@
     .total-container .total-label { font-size: 1.5em; color: #333; font-weight: normal; }
     .total-container .total-amount { font-size: 2em; color: #000; font-weight: normal; display: block; margin-top: 5px; }
     .table > thead > tr > th { font-weight: 600; color: #555; }
+    
+    /* Estilos para las líneas separadoras */
+    .separator-line {
+        border: 0;
+        height: 1px;
+        background-color: #e5e5e5;
+        margin: 12px 0;
+        opacity: 0.6;
+    }
+    
+    /* Estilos para la tabla de trámites */
+    .tabla-tramites {
+        font-size: 1em;
+    }
+    .tabla-tramites td {
+        padding: 10px 8px;
+        border-bottom: 1px solid #e5e5e5;
+    }
+    .tabla-tramites tbody tr:last-child td {
+        border-bottom: none;
+    }
 
         .crumb-link,
 .crumb-link:focus,
@@ -112,12 +133,16 @@
         <hr>
         <dl class="dl-horizontal resumen">
           <dt>Tipo</dt><dd>{{ $personaData['tipo_persona'] === 'fisica' ? 'Persona Física' : 'Persona Moral' }}</dd>
+          <hr class="separator-line">
           @if ($personaData['tipo_persona'] === 'fisica')
             <dt>CURP</dt><dd>{{ $personaData['curp'] }}</dd>
+            <hr class="separator-line">
             <dt>RFC</dt><dd>{{ $personaData['rfc'] }}</dd>
+            <hr class="separator-line">
             <dt>Nombre completo</dt><dd>{{ $personaData['nombres'] }} {{ $personaData['apellido_paterno'] }} {{ $personaData['apellido_materno'] }}</dd>
           @else
             <dt>RFC</dt><dd>{{ $personaData['rfc'] }}</dd>
+            <hr class="separator-line">
             <dt>Razón social</dt><dd>{{ $personaData['razon_social'] }}</dd>
           @endif
         </dl>
