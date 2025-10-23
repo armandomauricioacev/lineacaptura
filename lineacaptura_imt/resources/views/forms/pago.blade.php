@@ -69,6 +69,11 @@
             font-weight: 600; color: #555; text-align: left;
         }
         .tabla-tramites td:first-child::before { display: none; }
+        
+        /* Alinear la cantidad a la derecha en móviles como los demás datos */
+        .tabla-tramites td.text-center {
+            text-align: right !important;
+        }
     }
 
     /* Ajustes para los pasos y botones en móviles */
