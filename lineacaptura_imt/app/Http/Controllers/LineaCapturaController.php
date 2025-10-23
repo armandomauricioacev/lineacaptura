@@ -463,7 +463,7 @@ class LineaCapturaController extends Controller
 
     private function buildFullJsonForMultiple(LineasCapturadas $linea, Dependencia $dep, $tramites): array
     {
-        $idSolicitud = $dep->clave_dependencia . $dep->unidad_administrativa . date('Y') . str_pad($linea->id, 10, '0', STR_PAD_LEFT);
+        $idSolicitud = $dep->clave_dependencia . $dep->unidad_administrativa . date('y') . str_pad($linea->id, 10, '0', STR_PAD_LEFT);
 
         return [
             'DatosGenerales' => $this->buildDatosGenerales($idSolicitud, $linea, $dep),
