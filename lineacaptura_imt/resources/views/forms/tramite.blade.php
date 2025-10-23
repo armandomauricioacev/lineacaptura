@@ -394,6 +394,21 @@ document.addEventListener('DOMContentLoaded', function () {
     window.addEventListener('popstate', function () {
         history.pushState(null, document.title, location.href);
     });
+
+    // Prevenir error 419 en recargas de página
+    // Si detecta que es una recarga, redirige a la URL actual como GET
+    if (performance.navigation.type === 1) {
+        // Es una recarga, reemplazar con GET para evitar reenvío de POST
+        window.location.replace(window.location.href);
+    }
+
+    // Prevenir reenvío de formularios al usar botón atrás
+    window.addEventListener('beforeunload', function() {
+        // Limpiar cualquier estado de formulario pendiente
+        if (performance.navigation.type === 2) {
+            window.location.replace(window.location.href);
+        }
+    });
 });
 </script>
 @endpush

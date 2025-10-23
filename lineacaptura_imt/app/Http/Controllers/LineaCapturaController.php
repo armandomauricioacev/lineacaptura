@@ -53,27 +53,33 @@ class LineaCapturaController extends Controller
     }
 
     /**
-     * GET/POST /tramite (mostrar formulario de trámites)
-     * Si es POST, recibe selección de dependencia desde inicio
+     * POST /tramite (recibe selección de dependencia desde inicio)
+     * Implementa patrón POST-Redirect-GET para evitar error 419
+     */
+    public function storeDependenciaSelection(Request $request)
+    {
+        $validated = $request->validate([
+            'dependenciaId' => 'required|integer|exists:dependencias,id',
+        ]);
+
+        // Log de selección de dependencia
+        Log::info('Dependencia seleccionada', [
+            'dependencia_id' => $validated['dependenciaId'],
+            'ip' => $request->ip(),
+            'timestamp' => now()
+        ]);
+
+        $request->session()->put('dependenciaId', $validated['dependenciaId']);
+
+        // REDIRECCIÓN para evitar error 419 en recargas
+        return redirect()->route('tramite.show');
+    }
+
+    /**
+     * GET /tramite (mostrar formulario de trámites)
      */
     public function showTramite(Request $request)
     {
-        // Si es POST, procesar la selección de dependencia
-        if ($request->isMethod('post')) {
-            $validated = $request->validate([
-                'dependenciaId' => 'required|integer|exists:dependencias,id',
-            ]);
-
-            // Log de selección de dependencia
-            Log::info('Dependencia seleccionada', [
-                'dependencia_id' => $validated['dependenciaId'],
-                'ip' => $request->ip(),
-                'timestamp' => now()
-            ]);
-
-            $request->session()->put('dependenciaId', $validated['dependenciaId']);
-        }
-
         $dependenciaId = $request->session()->get('dependenciaId');
         if (!$dependenciaId) {
             // Log de intento de acceso sin dependencia
@@ -95,20 +101,6 @@ class LineaCapturaController extends Controller
             'dependencia' => $dependencia,
             'tramites'    => $tramites,
         ]);
-    }
-
-    /**
-     * POST /tramite (recibe selección de dependencia desde inicio)
-     */
-    public function storeDependenciaSelection(Request $request)
-    {
-        $validated = $request->validate([
-            'dependenciaId' => 'required|integer|exists:dependencias,id',
-        ]);
-
-        $request->session()->put('dependenciaId', $validated['dependenciaId']);
-
-        return redirect()->route('tramite.show');
     }
 
     /**

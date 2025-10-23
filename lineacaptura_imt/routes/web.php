@@ -19,7 +19,7 @@ Route::middleware(['web', 'ensure.step', 'throttle:40,1'])->group(function () {
 });
 
 // Rutas POST para el flujo con rate limiting
-Route::post('/tramite', [LineaCapturaController::class, 'showTramite'])->name('tramite.store')->middleware('throttle:30,1');
+Route::post('/tramite', [LineaCapturaController::class, 'storeDependenciaSelection'])->name('tramite.store')->middleware('throttle:30,1');
 Route::post('/persona', [LineaCapturaController::class, 'storeTramiteSelection'])->name('persona.store')->middleware('throttle:20,1');
 Route::post('/pago', [LineaCapturaController::class, 'storePersonaData'])->name('pago.store')->middleware('throttle:15,1');
 Route::post('/generar-linea', [LineaCapturaController::class, 'generarLineaCaptura'])->name('linea.generar')->middleware('throttle:20,1');
