@@ -125,16 +125,27 @@ class LineaCapturaController extends Controller
         ]);
 
         $validated = $request->validate([
-            'tramite_ids'   => 'required|array|min:1|max:10',
-            'tramite_ids.*' => 'integer|exists:tramites,id',
+            'tramite_ids'        => 'required|array|min:1|max:10',
+            'tramite_ids.*'      => 'integer|exists:tramites,id',
+            'tramite_cantidades' => 'required|array|min:1|max:10',
+            'tramite_cantidades.*' => 'integer|min:1|max:999',
         ]);
 
-        $request->session()->put('tramites_seleccionados', $validated['tramite_ids']);
+        // Combinar IDs con cantidades
+        $tramitesConCantidades = [];
+        for ($i = 0; $i < count($validated['tramite_ids']); $i++) {
+            $tramitesConCantidades[] = [
+                'id' => $validated['tramite_ids'][$i],
+                'cantidad' => $validated['tramite_cantidades'][$i] ?? 1
+            ];
+        }
+
+        $request->session()->put('tramites_seleccionados', $tramitesConCantidades);
 
         // Log de trámites guardados con más contexto
         Log::info('Trámites guardados en sesión', [
-            'tramites_seleccionados' => $validated['tramite_ids'],
-            'cantidad_tramites' => count($validated['tramite_ids']),
+            'tramites_seleccionados' => $tramitesConCantidades,
+            'cantidad_tramites' => count($tramitesConCantidades),
             'dependencia_id' => $request->session()->get('dependenciaId'),
             'ip' => $request->ip(),
             'timestamp' => now()
@@ -251,9 +262,18 @@ class LineaCapturaController extends Controller
                 ->with('error', 'Los trámites seleccionados no son válidos. Por favor, inicia el proceso nuevamente.');
         }
 
+        // Extraer solo los IDs para obtener los trámites de la base de datos
+        $soloIds = array_column($tramiteIds, 'id');
+        
         // Usar cache service para obtener dependencia y trámites
         $dependencia = $this->cacheService->getDependencia($dependenciaId);
-        $tramites    = $this->cacheService->getTramites($tramiteIds);
+        $tramites    = $this->cacheService->getTramites($soloIds);
+        
+        // Agregar cantidad a cada trámite
+        foreach ($tramites as $tramite) {
+            $tramiteConCantidad = collect($tramiteIds)->firstWhere('id', $tramite->id);
+            $tramite->cantidad = $tramiteConCantidad['cantidad'] ?? 1;
+        }
 
         // Vista: resources/views/forms/pago.blade.php
         return view('forms.pago', compact('dependencia', 'tramites', 'personaData'));
@@ -358,21 +378,37 @@ class LineaCapturaController extends Controller
 
         // Usar cache service para obtener dependencia y trámites
         $dependencia = $this->cacheService->getDependencia($dependenciaId);
-        $tramites    = $this->cacheService->getTramites($tramiteIds);
+        
+        // Extraer solo los IDs para obtener los trámites de la base de datos
+        $soloIds = array_column($tramiteIds, 'id');
+        $tramites = $this->cacheService->getTramites($soloIds);
+        
+        // Agregar cantidad a cada trámite
+        foreach ($tramites as $tramite) {
+            $tramiteConCantidad = collect($tramiteIds)->firstWhere('id', $tramite->id);
+            $tramite->cantidad = $tramiteConCantidad['cantidad'] ?? 1;
+        }
 
         $totalCuotas = 0;
         $totalIvas   = 0;
 
         foreach ($tramites as $tramite) {
-            $totalCuotas += $tramite->cuota;
+            $cantidad = $tramite->cantidad ?? 1;
+            $cuotaTotal = $tramite->cuota * $cantidad;
+            $totalCuotas += $cuotaTotal;
             if ($tramite->iva) {
-                $totalIvas += round($tramite->cuota * 0.16, 2);
+                $totalIvas += round($cuotaTotal * 0.16, 2);
             }
         }
 
         // Total redondeado (entero) antes de persistir
         $importeTotalGeneralSinRedondear = $totalCuotas + $totalIvas;
         $importeTotalGeneralRedondeado   = round($importeTotalGeneralSinRedondear);
+
+        // Crear string de trámites con cantidades para almacenar
+        $tramiteString = collect($tramiteIds)->map(function($item) {
+            return $item['id'] . ':' . $item['cantidad'];
+        })->implode(',');
 
         $lineaCapturada = LineasCapturadas::create([
             'tipo_persona'      => ($personaData['tipo_persona'] === 'fisica' ? 'F' : 'M'),
@@ -383,7 +419,7 @@ class LineaCapturaController extends Controller
             'apellido_paterno'  => $personaData['apellido_paterno'] ?? null,
             'apellido_materno'  => $personaData['apellido_materno'] ?? null,
             'dependencia_id'    => $dependenciaId,
-            'tramite_id'        => implode(',', $tramiteIds),
+            'tramite_id'        => $tramiteString,
             'importe_cuota'     => $totalCuotas,
             'importe_iva'       => $totalIvas,
             'importe_total'     => $importeTotalGeneralRedondeado, // guardamos redondeado
@@ -506,22 +542,26 @@ class LineaCapturaController extends Controller
 
         $totalSinRedondear = 0;
         foreach ($tramites as $t) {
-            $montoIva = $t->iva ? round($t->cuota * 0.16, 2) : 0;
-            $totalSinRedondear += $t->cuota + $montoIva;
+            $cantidad = $t->cantidad ?? 1;
+            $cuotaTotal = $t->cuota * $cantidad;
+            $montoIva = $t->iva ? round($cuotaTotal * 0.16, 2) : 0;
+            $totalSinRedondear += $cuotaTotal + $montoIva;
         }
 
         $diferenciaRedondeo = $totalRedondeado - $totalSinRedondear;
 
         foreach ($tramites as $index => $tramite) {
-            $montoIva   = $tramite->iva ? round($tramite->cuota * 0.16, 2) : 0;
-            $totalTram  = $tramite->cuota + $montoIva;
+            $cantidad = $tramite->cantidad ?? 1;
+            $cuotaTotal = $tramite->cuota * $cantidad;
+            $montoIva   = $tramite->iva ? round($cuotaTotal * 0.16, 2) : 0;
+            $totalTram  = $cuotaTotal + $montoIva;
 
             if ($index === count($tramites) - 1) {
                 $totalTram += $diferenciaRedondeo; // ajusta al último
             }
 
             $conceptos = [];
-            $conceptos[] = $this->buildConcepto($numeroSecuenciaGlobal++, 'P', $tramite, $tramite->cuota);
+            $conceptos[] = $this->buildConcepto($numeroSecuenciaGlobal++, 'P', $tramite, $cuotaTotal);
 
             if ($tramite->iva) {
                 $montoIvaAjustado = $montoIva;

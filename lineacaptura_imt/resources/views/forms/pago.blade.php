@@ -101,7 +101,7 @@
 
   <div class="row equal-panels">
     {{-- Resumen de la persona --}}
-    <div class="col-md-6">
+    <div class="col-md-4">
       <div class="caja">
         <center><h4>Datos de la persona</h4></center>
         <hr>
@@ -120,7 +120,7 @@
     </div>
 
     {{-- Resumen de trámites seleccionados --}}
-    <div class="col-md-6">
+    <div class="col-md-8">
         <div class="caja">
             <center><h4>Trámites seleccionados</h4></center>
             <hr>
@@ -128,6 +128,7 @@
                 <thead>
                     <tr>
                         <th>Descripción</th>
+                        <th class="text-center">Cantidad</th>
                         <th class="text-right">Cuota</th>
                         <th class="text-right">IVA</th>
                         <th class="text-right">Total</th>
@@ -137,13 +138,20 @@
                     @php $totalGeneralSinRedondear = 0; @endphp
                     @foreach($tramites as $tramite)
                         @php
-                            $montoIva = $tramite->iva ? round($tramite->cuota * 0.16, 2) : 0;
-                            $totalTramite = $tramite->cuota + $montoIva;
+                            $cantidad = $tramite->cantidad ?? 1;
+                            $cuotaUnitaria = $tramite->cuota;
+                            $cuotaTotal = $cuotaUnitaria * $cantidad;
+                            $montoIva = $tramite->iva ? round($cuotaTotal * 0.16, 2) : 0;
+                            $totalTramite = $cuotaTotal + $montoIva;
                             $totalGeneralSinRedondear += $totalTramite;
                         @endphp
                         <tr>
-                            <td data-label="Descripción">{{ $tramite->descripcion }}</td>
-                            <td data-label="Cuota" class="text-right">${{ number_format($tramite->cuota, 2) }}</td>
+                            <td data-label="Descripción">
+                                {{ $tramite->descripcion }}
+                                <br><small class="text-muted">Cuota unitaria: ${{ number_format($cuotaUnitaria, 2) }}</small>
+                            </td>
+                            <td data-label="Cantidad" class="text-center">{{ $cantidad }}</td>
+                            <td data-label="Cuota" class="text-right">${{ number_format($cuotaTotal, 2) }}</td>
                             <td data-label="IVA" class="text-right">${{ number_format($montoIva, 2) }}</td>
                             <td data-label="Total" class="text-right">${{ number_format($totalTramite, 2) }}</td>
                         </tr>

@@ -78,6 +78,17 @@
             font-weight: 600; color: #555; text-align: left;
         }
         .tabla-tramites td:first-child::before { display: none; }
+        
+        /* Estilos específicos para el input de cantidad en móvil */
+        .tabla-tramites td .cantidad-input {
+            width: 60px !important;
+            margin: 0 !important;
+            display: inline-block;
+        }
+        .tabla-tramites td[data-label="Cantidad"] {
+            text-align: center !important;
+            padding-left: 50%;
+        }
     }
 
     @media (max-width:575px){
@@ -142,6 +153,7 @@
       <thead>
         <tr>
           <th>Descripción del concepto</th>
+          <th class="text-center">Cantidad</th>
           <th class="text-right">Cuota</th>
           <th class="text-right">IVA</th>
           <th class="text-right">Total</th>
@@ -150,7 +162,7 @@
       </thead>
       <tbody id="tramitesSeleccionadosBody">
           <tr id="empty-row">
-              <td colspan="5" class="text-center" style="padding: 20px; color: #777;">Aún no has agregado trámites.</td>
+              <td colspan="6" class="text-center" style="padding: 20px; color: #777;">Aún no has agregado trámites.</td>
           </tr>
       </tbody>
     </table>
@@ -215,14 +227,22 @@ document.addEventListener('DOMContentLoaded', function () {
             tramitesSeleccionadosBody.appendChild(emptyRow);
         } else {
             tramitesSeleccionados.forEach((tramite, index) => {
-                const ivaMonto = tramite.iva == '1' ? parseFloat(tramite.cuota) * 0.16 : 0;
-                const totalTramite = parseFloat(tramite.cuota) + ivaMonto;
+                const cantidad = tramite.cantidad || 1;
+                const cuotaUnitaria = parseFloat(tramite.cuota);
+                const cuotaTotal = cuotaUnitaria * cantidad;
+                const ivaMonto = tramite.iva == '1' ? cuotaTotal * 0.16 : 0;
+                const totalTramite = cuotaTotal + ivaMonto;
                 totalGeneralSinRedondear += totalTramite;
                 
                 const newRow = `
                     <tr data-id="${tramite.id}">
                         <td data-label="Descripción del concepto">${tramite.descripcion}</td>
-                        <td data-label="Importe" class="text-right">${formatCurrency(tramite.cuota)}</td>
+                        <td data-label="Cantidad" class="text-center">
+                            <input type="number" min="1" max="999" value="${cantidad}" 
+                                   class="form-control cantidad-input" data-index="${index}" 
+                                   style="width: 80px; margin: 0 auto; text-align: center;">
+                        </td>
+                        <td data-label="Cuota" class="text-right">${formatCurrency(cuotaTotal)}</td>
                         <td data-label="IVA" class="text-right">${formatCurrency(ivaMonto)}</td>
                         <td data-label="Total" class="text-right">${formatCurrency(totalTramite)}</td>
                         <td data-label="Eliminar" class="text-center">
@@ -283,6 +303,7 @@ document.addEventListener('DOMContentLoaded', function () {
             descripcion: selectedOption.getAttribute('data-descripcion'),
             cuota: selectedOption.getAttribute('data-cuota'),
             iva: selectedOption.getAttribute('data-iva'),
+            cantidad: 1 // Valor predeterminado
         };
         
         tramitesSeleccionados.push(tramiteData);
@@ -298,6 +319,29 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     });
 
+    // Event listener para los inputs de cantidad
+    tramitesSeleccionadosBody.addEventListener('input', function(event) {
+        if (event.target.classList.contains('cantidad-input')) {
+            const index = parseInt(event.target.getAttribute('data-index'), 10);
+            let nuevaCantidad = parseInt(event.target.value, 10);
+            
+            // Validar que la cantidad esté en el rango permitido
+            if (isNaN(nuevaCantidad) || nuevaCantidad < 1) {
+                nuevaCantidad = 1;
+                event.target.value = 1;
+            } else if (nuevaCantidad > 999) {
+                nuevaCantidad = 999;
+                event.target.value = 999;
+            }
+            
+            // Actualizar la cantidad en el array
+            if (tramitesSeleccionados[index]) {
+                tramitesSeleccionados[index].cantidad = nuevaCantidad;
+                actualizarVista();
+            }
+        }
+    });
+
     btnSiguiente.addEventListener('click', function (event) {
         if (tramitesSeleccionados.length === 0) {
             event.preventDefault();
@@ -310,15 +354,23 @@ document.addEventListener('DOMContentLoaded', function () {
         event.preventDefault();
         
         // Crear inputs ocultos para los trámites seleccionados
-        const existingInputs = tramiteForm.querySelectorAll('input[name="tramite_ids[]"]');
+        const existingInputs = tramiteForm.querySelectorAll('input[name="tramite_ids[]"], input[name="tramite_cantidades[]"]');
         existingInputs.forEach(input => input.remove());
         
         tramitesSeleccionados.forEach(tramite => {
-            const input = document.createElement('input');
-            input.type = 'hidden';
-            input.name = 'tramite_ids[]';
-            input.value = tramite.id;
-            tramiteForm.appendChild(input);
+            // Input para el ID del trámite
+            const inputId = document.createElement('input');
+            inputId.type = 'hidden';
+            inputId.name = 'tramite_ids[]';
+            inputId.value = tramite.id;
+            tramiteForm.appendChild(inputId);
+            
+            // Input para la cantidad del trámite
+            const inputCantidad = document.createElement('input');
+            inputCantidad.type = 'hidden';
+            inputCantidad.name = 'tramite_cantidades[]';
+            inputCantidad.value = tramite.cantidad || 1;
+            tramiteForm.appendChild(inputCantidad);
         });
         
         // Enviar el formulario después de agregar los inputs
