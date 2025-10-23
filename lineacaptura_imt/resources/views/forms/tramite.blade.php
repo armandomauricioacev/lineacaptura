@@ -86,8 +86,18 @@
             display: inline-block;
         }
         .tabla-tramites td[data-label="Cantidad"] {
-            text-align: center !important;
+            text-align: right !important;
             padding-left: 50%;
+        }
+        
+        /* Alinear el botón de eliminar a la derecha en móviles */
+        .tabla-tramites td[data-label="Eliminar"] {
+            text-align: right !important;
+            padding-left: 50%;
+        }
+        .tabla-tramites td .btn-quitar {
+            margin: 0 !important;
+            display: inline-block;
         }
     }
 
