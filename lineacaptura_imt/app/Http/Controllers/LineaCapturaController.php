@@ -405,7 +405,7 @@ class LineaCapturaController extends Controller
         $lineaCapturada = LineasCapturadas::create([
             'tipo_persona'      => ($personaData['tipo_persona'] === 'fisica' ? 'F' : 'M'),
             'curp'              => $personaData['curp'] ?? null,
-            'rfc'               => $personaData['rfc'],
+            'rfc'               => $personaData['rfc'] ?? null,
             'razon_social'      => $personaData['razon_social'] ?? null,
             'nombres'           => $personaData['nombres'] ?? null,
             'apellido_paterno'  => $personaData['apellido_paterno'] ?? null,
