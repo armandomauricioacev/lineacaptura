@@ -402,6 +402,86 @@ class LineaCapturaController extends Controller
             return $item['id'] . ':' . $item['cantidad'];
         })->implode(',');
 
+        // ==========================================================
+        // CONSTRUCCIÓN DEL SNAPSHOT COMPLETO ANTES DE CREAR REGISTRO
+        // ==========================================================
+        $snapshotTramites = [
+            'tramites' => [],
+            'resumen' => [
+                'total_tramites_seleccionados' => count($tramites),
+                'suma_cuotas' => $totalCuotas,
+                'suma_iva' => $totalIvas,
+                'gran_total' => $importeTotalGeneralRedondeado
+            ],
+            'dependencia' => [
+                'id' => $dependencia->id,
+                'nombre' => $dependencia->nombre,
+                'clave_dependencia' => $dependencia->clave_dependencia,
+                'unidad_administrativa' => $dependencia->unidad_administrativa
+            ],
+            'fecha_generacion' => Carbon::now()->toDateTimeString()
+        ];
+
+        // Agregar cada trámite al snapshot CON TODOS LOS CAMPOS
+        foreach ($tramites as $tramite) {
+            $cantidad = $tramite->cantidad ?? 1;
+            $cuotaUnitaria = $tramite->cuota;
+            $cuotaTotal = $cuotaUnitaria * $cantidad;
+            $montoIva = $tramite->iva ? round($cuotaTotal * 0.16, 2) : 0;
+            $importeTotal = $cuotaTotal + $montoIva;
+
+            $snapshotTramites['tramites'][] = [
+                // Identificadores
+                'tramite_id_original' => $tramite->id,
+                'cantidad' => $cantidad,
+                
+                // Información básica
+                'descripcion' => $tramite->descripcion,
+                'clave_tramite' => $tramite->clave_tramite,
+                'variante' => $tramite->variante,
+                'clave_dependencia_siglas' => $tramite->clave_dependencia_siglas,
+                'tramite_usoreservado' => $tramite->tramite_usoreservado,
+                
+                // Montos calculados
+                'cuota_unitaria' => $cuotaUnitaria,
+                'importe_cuota_total' => $cuotaTotal,
+                'iva_unitario' => $tramite->iva ? round($cuotaUnitaria * 0.16, 2) : 0,
+                'importe_iva_total' => $montoIva,
+                'importe_total' => $importeTotal,
+                
+                // Información legal y vigencia
+                'fundamento_legal' => $tramite->fundamento_legal,
+                'vigencia_tramite_de' => $tramite->vigencia_tramite_de,
+                'vigencia_tramite_al' => $tramite->vigencia_tramite_al,
+                'vigencia_lineacaptura' => $tramite->vigencia_lineacaptura,
+                'tipo_vigencia' => $tramite->tipo_vigencia,
+                
+                // Clasificación contable
+                'clave_contable' => $tramite->clave_contable,
+                'agrupador' => $tramite->agrupador,
+                'tipo_agrupador' => $tramite->tipo_agrupador,
+                'clave_periodicidad' => $tramite->clave_periodicidad,
+                'clave_periodo' => $tramite->clave_periodo,
+                
+                // Características del trámite
+                'obligatorio' => $tramite->obligatorio,
+                'nombre_monto' => $tramite->nombre_monto,
+                'variable' => $tramite->variable,
+                'actualizacion' => $tramite->actualizacion,
+                'recargos' => $tramite->recargos,
+                'multa_correccionfiscal' => $tramite->multa_correccionfiscal,
+                'compensacion' => $tramite->compensacion,
+                'saldo_favor' => $tramite->saldo_favor,
+                
+                // Timestamps del registro original
+                'created_at_original' => $tramite->created_at ? $tramite->created_at->toDateTimeString() : null,
+                'updated_at_original' => $tramite->updated_at ? $tramite->updated_at->toDateTimeString() : null,
+            ];
+        }
+
+        // ==========================================================
+        // CREAR REGISTRO CON SNAPSHOT YA INCLUIDO
+        // ==========================================================
         $lineaCapturada = LineasCapturadas::create([
             'tipo_persona'      => ($personaData['tipo_persona'] === 'fisica' ? 'F' : 'M'),
             'curp'              => $personaData['curp'] ?? null,
@@ -412,9 +492,10 @@ class LineaCapturaController extends Controller
             'apellido_materno'  => $personaData['apellido_materno'] ?? null,
             'dependencia_id'    => $dependenciaId,
             'tramite_id'        => $tramiteString,
+            'detalle_tramites_snapshot' => $snapshotTramites, // ✅ SNAPSHOT COMPLETO INCLUIDO
             'importe_cuota'     => $totalCuotas,
             'importe_iva'       => $totalIvas,
-            'importe_total'     => $importeTotalGeneralRedondeado, // guardamos redondeado
+            'importe_total'     => $importeTotalGeneralRedondeado,
             'fecha_vigencia'    => Carbon::now()->addMonth()->toDateString(),
         ]);
 
@@ -472,6 +553,7 @@ class LineaCapturaController extends Controller
             'importe_total' => $importeTotalGeneralRedondeado,
             'tipo_persona' => $personaData['tipo_persona'],
             'procesado_exitosamente' => $respuestaSat['exito'] ?? false,
+            'snapshot_creado' => !empty($snapshotTramites),
             'ip' => $request->ip(),
             'timestamp' => now()
         ]);
@@ -495,7 +577,7 @@ class LineaCapturaController extends Controller
 
         return [
             'DatosGenerales' => $this->buildDatosGenerales($idSolicitud, $linea, $dep),
-            'Tramites'       => $this->buildTramitesForMultiple($tramites, $linea->importe_total), // total ya redondeado
+            'Tramites'       => $this->buildTramitesForMultiple($tramites, $linea->importe_total),
         ];
     }
 
@@ -520,7 +602,7 @@ class LineaCapturaController extends Controller
 
         $datos['DatosLineaCaptura'] = [
             'FechaSolicitud' => Carbon::parse($linea->created_at)->format('d/m/Y H:i'),
-            'Importe'        => $linea->importe_total, // redondeado
+            'Importe'        => $linea->importe_total,
             'FechaVigencia'  => Carbon::parse($linea->fecha_vigencia)->format('d/m/Y'),
         ];
 
@@ -549,7 +631,7 @@ class LineaCapturaController extends Controller
             $totalTram  = $cuotaTotal + $montoIva;
 
             if ($index === count($tramites) - 1) {
-                $totalTram += $diferenciaRedondeo; // ajusta al último
+                $totalTram += $diferenciaRedondeo;
             }
 
             $conceptos = [];

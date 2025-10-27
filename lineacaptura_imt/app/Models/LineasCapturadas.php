@@ -11,11 +11,6 @@ class LineasCapturadas extends Model
 
     protected $table = 'lineas_capturadas';
 
-    /**
-     * The attributes that are mass assignable.
-     *
-     * @var array<int, string>
-     */
     protected $fillable = [
         'tipo_persona',
         'curp',
@@ -26,22 +21,15 @@ class LineasCapturadas extends Model
         'apellido_materno',
         'dependencia_id',
         'tramite_id',
-        'estado_pago',
-        'fecha_solicitud',
-        'fecha_vigencia',
-
-        // ==========================================================
-        //  AÑADIR ESTOS CAMPOS PARA PERMITIR EL GUARDADO MASIVO
-        // ==========================================================
+        'detalle_tramites_snapshot', // ✅ Campo del snapshot
         'solicitud',
         'importe_cuota',
         'importe_iva',
         'importe_total',
         'json_generado',
-
-        // ==========================================================
-        //  CAMPOS ADICIONALES DEL SAT
-        // ==========================================================
+        'estado_pago',
+        'fecha_solicitud',
+        'fecha_vigencia',
         'json_recibido',
         'id_documento',
         'tipo_pago',
@@ -52,33 +40,80 @@ class LineasCapturadas extends Model
         'fecha_vigencia_sat',
         'errores_sat',
         'fecha_respuesta_sat',
-        'procesado_exitosamente',
+        'procesado_exitosamente'
     ];
 
     /**
-     * The attributes that should be cast.
-     *
-     * @var array<string, string>
+     * ✅ CRÍTICO: Cast del campo JSON para que Laravel maneje correctamente
+     * la serialización y deserialización automática
      */
     protected $casts = [
+        'detalle_tramites_snapshot' => 'array', // ✅ Convierte automáticamente JSON ↔ Array
         'fecha_solicitud' => 'date',
         'fecha_vigencia' => 'date',
         'fecha_vigencia_sat' => 'date',
         'fecha_respuesta_sat' => 'datetime',
-        'json_generado' => 'array',
-        'json_recibido' => 'array',
-        'errores_sat' => 'array',
         'procesado_exitosamente' => 'boolean',
+        'importe_cuota' => 'decimal:2',
+        'importe_iva' => 'decimal:2',
+        'importe_total' => 'decimal:2',
+        'importe_sat' => 'decimal:2',
     ];
 
-    // Relaciones
+    /**
+     * Relación con la tabla dependencias
+     */
     public function dependencia()
     {
-        return $this->belongsTo(Dependencia::class);
+        return $this->belongsTo(Dependencia::class, 'dependencia_id');
     }
 
+    /**
+     * Relación con la tabla tramites
+     * Nota: tramite_id contiene un string con IDs separados por comas
+     * Esta relación es más informativa, el snapshot contiene los datos reales
+     */
     public function tramite()
     {
-        return $this->belongsTo(Tramite::class);
+        return $this->belongsTo(Tramite::class, 'tramite_id');
+    }
+
+    /**
+     * Obtener los trámites del snapshot (datos estáticos)
+     * @return array|null
+     */
+    public function getTramitesSnapshot()
+    {
+        return $this->detalle_tramites_snapshot['tramites'] ?? null;
+    }
+
+    /**
+     * Obtener el resumen del snapshot
+     * @return array|null
+     */
+    public function getResumenSnapshot()
+    {
+        return $this->detalle_tramites_snapshot['resumen'] ?? null;
+    }
+
+    /**
+     * Obtener la información de la dependencia del snapshot
+     * @return array|null
+     */
+    public function getDependenciaSnapshot()
+    {
+        return $this->detalle_tramites_snapshot['dependencia'] ?? null;
+    }
+
+    /**
+     * Verificar si tiene snapshot válido
+     * @return bool
+     */
+    public function hasValidSnapshot()
+    {
+        return !empty($this->detalle_tramites_snapshot) 
+            && isset($this->detalle_tramites_snapshot['tramites'])
+            && is_array($this->detalle_tramites_snapshot['tramites'])
+            && count($this->detalle_tramites_snapshot['tramites']) > 0;
     }
 }
