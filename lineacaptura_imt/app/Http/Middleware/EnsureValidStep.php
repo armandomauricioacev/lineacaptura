@@ -15,9 +15,7 @@ use Symfony\Component\HttpFoundation\Response;
 class EnsureValidStep
 {
     /**
-     * Handle an incoming request.
-     *
-     * @param  \Closure(\Illuminate\Http\Request): (\Symfony\Component\HttpFoundation\Response)  $next
+     * Valida el paso según sesión y redirige si no corresponde.
      */
     public function handle(Request $request, Closure $next): Response
     {

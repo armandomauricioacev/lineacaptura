@@ -10,9 +10,7 @@ use Symfony\Component\HttpFoundation\Response;
 class RateLimitingMiddleware
 {
     /**
-     * Handle an incoming request.
-     *
-     * @param  \Closure(\Illuminate\Http\Request): (\Symfony\Component\HttpFoundation\Response)  $next
+     * Monitorea solicitudes y registra eventos de rate limit (429).
      */
     public function handle(Request $request, Closure $next): Response
     {

@@ -10,7 +10,7 @@ use Symfony\Component\HttpFoundation\Response;
 class ValidateFlowStep
 {
     /**
-     * Handle an incoming request.
+     * Valida flujo por paso; bloquea acceso si faltan datos.
      */
     public function handle(Request $request, Closure $next, string $step): Response
     {

@@ -20,13 +20,16 @@ class LineaCapturaController extends Controller
 {
     protected $cacheService;
 
+    /**
+     * Constructor: inyecta servicio de cache.
+     */
     public function __construct(CacheService $cacheService)
     {
         $this->cacheService = $cacheService;
     }
 
     /**
-     * /inicio
+     * Muestra lista inicial de dependencias.
      */
     public function index(Request $request)
     {
@@ -53,8 +56,7 @@ class LineaCapturaController extends Controller
     }
 
     /**
-     * POST /tramite (recibe selección de dependencia desde inicio)
-     * Implementa patrón POST-Redirect-GET para evitar error 419
+     * Guarda dependencia seleccionada y redirige a trámites.
      */
     public function storeDependenciaSelection(Request $request)
     {
@@ -76,7 +78,7 @@ class LineaCapturaController extends Controller
     }
 
     /**
-     * GET /tramite (mostrar formulario de trámites)
+     * Muestra selección de trámites.
      */
     public function showTramite(Request $request)
     {
@@ -104,7 +106,7 @@ class LineaCapturaController extends Controller
     }
 
     /**
-     * POST /persona  (recibe selección de trámites)
+     * Guarda selección de trámites y cantidades.
      */
     public function storeTramiteSelection(Request $request)
     {
@@ -147,7 +149,7 @@ class LineaCapturaController extends Controller
     }
 
     /**
-     * GET /persona (form de persona)
+     * Muestra formulario de datos de la persona.
      */
     public function showPersonaForm(Request $request)
     {
@@ -164,7 +166,7 @@ class LineaCapturaController extends Controller
     }
 
     /**
-     * GET /persona - Maneja recargas de página
+     * Recarga formulario de persona desde sesión.
      */
     public function showPersonaReload(Request $request)
     {
@@ -177,7 +179,7 @@ class LineaCapturaController extends Controller
     }
 
     /**
-     * POST /pago (recibe datos de persona y redirige a pago)
+     * Valida y guarda datos de persona; redirige a pago.
      */
     public function storePersonaData(Request $request)
     {
@@ -235,7 +237,7 @@ class LineaCapturaController extends Controller
     }
 
     /**
-     * GET /pago
+     * Muestra resumen y opciones de pago.
      */
     public function showPagoPage(Request $request)
     {
@@ -272,7 +274,7 @@ class LineaCapturaController extends Controller
     }
 
     /**
-     * GET /pago - Maneja recargas de página
+     * Recarga página de pago desde sesión.
      */
     public function showPagoReload(Request $request)
     {
@@ -293,7 +295,7 @@ class LineaCapturaController extends Controller
     }
 
     /**
-     * GET /generar-linea - Maneja recargas de página
+     * Muestra línea de captura y respuesta del SAT.
      */
     public function showLineaCapturada(Request $request)
     {
@@ -326,7 +328,7 @@ class LineaCapturaController extends Controller
     }
 
     /**
-     * POST /generar-linea
+     * Genera línea de captura y envía a SAT.
      */
     public function generarLineaCaptura(Request $request)
     {
@@ -492,7 +494,7 @@ class LineaCapturaController extends Controller
             'apellido_materno'  => $personaData['apellido_materno'] ?? null,
             'dependencia_id'    => $dependenciaId,
             'tramite_id'        => $tramiteString,
-            'detalle_tramites_snapshot' => $snapshotTramites, // ✅ SNAPSHOT COMPLETO INCLUIDO
+            'detalle_tramites_snapshot' => $snapshotTramites, // Snapshot completo incluido
             'importe_cuota'     => $totalCuotas,
             'importe_iva'       => $totalIvas,
             'importe_total'     => $importeTotalGeneralRedondeado,
@@ -687,7 +689,7 @@ class LineaCapturaController extends Controller
     }
 
     /**
-     * POST /regresar
+     * Regresa al paso anterior del flujo.
      */
     public function regresar(Request $request)
     {
@@ -712,11 +714,7 @@ class LineaCapturaController extends Controller
     }
 
     /**
-     * Función consolidada para validar y decodificar archivos JSON con HTML base64
-     * Combina las mejores características de los scripts de verificación
-     * 
-     * @param string $rutaArchivo Ruta al archivo JSON
-     * @return array Resultado de la validación y decodificación
+     * Valida JSON y decodifica HTML base64.
      */
     public function validarYDecodificarJson(string $rutaArchivo): array
     {
@@ -855,10 +853,7 @@ class LineaCapturaController extends Controller
     }
 
     /**
-     * Función auxiliar para corregir automáticamente JSON truncado
-     * 
-     * @param string $rutaArchivo Ruta al archivo JSON a corregir
-     * @return array Resultado de la corrección
+     * Corrige JSON truncado removiendo caracteres finales inválidos.
      */
     public function corregirJsonTruncado(string $rutaArchivo): array
     {
@@ -904,10 +899,7 @@ class LineaCapturaController extends Controller
     }
 
     /**
-     * Envía el JSON generado a la API del SAT para validación
-     * 
-     * @param array $jsonData Los datos JSON a enviar al SAT
-     * @return array Respuesta de la API del SAT
+     * Envía JSON al SAT y retorna respuesta.
      */
     private function enviarJsonASat($jsonData)
     {
@@ -997,11 +989,7 @@ class LineaCapturaController extends Controller
     }
 
     /**
-     * Procesa la respuesta recibida del SAT y extrae los datos necesarios
-     * 
-     * @param array $datosRespuesta Datos JSON decodificados del SAT
-     * @param string $respuestaCompleta Respuesta completa en texto
-     * @return array Datos procesados y estructurados
+     * Procesa respuesta del SAT y extrae datos clave.
      */
     private function procesarRespuestaSat(array $datosRespuesta, string $respuestaCompleta): array
     {

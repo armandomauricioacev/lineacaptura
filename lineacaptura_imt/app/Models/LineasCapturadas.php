@@ -21,7 +21,7 @@ class LineasCapturadas extends Model
         'apellido_materno',
         'dependencia_id',
         'tramite_id',
-        'detalle_tramites_snapshot', // ✅ Campo del snapshot
+        'detalle_tramites_snapshot', 
         'solicitud',
         'importe_cuota',
         'importe_iva',
@@ -44,11 +44,10 @@ class LineasCapturadas extends Model
     ];
 
     /**
-     * ✅ CRÍTICO: Cast del campo JSON para que Laravel maneje correctamente
-     * la serialización y deserialización automática
+     * Casts para manejo automático de serialización/deserialización.
      */
     protected $casts = [
-        'detalle_tramites_snapshot' => 'array', // ✅ Convierte automáticamente JSON ↔ Array
+        'detalle_tramites_snapshot' => 'array', // Convierte automáticamente JSON ↔ Array
         'fecha_solicitud' => 'date',
         'fecha_vigencia' => 'date',
         'fecha_vigencia_sat' => 'date',
@@ -61,7 +60,7 @@ class LineasCapturadas extends Model
     ];
 
     /**
-     * Relación con la tabla dependencias
+     * Relación con Dependencia.
      */
     public function dependencia()
     {
@@ -69,9 +68,7 @@ class LineasCapturadas extends Model
     }
 
     /**
-     * Relación con la tabla tramites
-     * Nota: tramite_id contiene un string con IDs separados por comas
-     * Esta relación es más informativa, el snapshot contiene los datos reales
+     * Relación informativa con Tramite (IDs en string).
      */
     public function tramite()
     {
@@ -79,8 +76,7 @@ class LineasCapturadas extends Model
     }
 
     /**
-     * Obtener los trámites del snapshot (datos estáticos)
-     * @return array|null
+     * Trámites del snapshot.
      */
     public function getTramitesSnapshot()
     {
@@ -88,8 +84,7 @@ class LineasCapturadas extends Model
     }
 
     /**
-     * Obtener el resumen del snapshot
-     * @return array|null
+     * Resumen del snapshot.
      */
     public function getResumenSnapshot()
     {
@@ -97,8 +92,7 @@ class LineasCapturadas extends Model
     }
 
     /**
-     * Obtener la información de la dependencia del snapshot
-     * @return array|null
+     * Dependencia del snapshot.
      */
     public function getDependenciaSnapshot()
     {
@@ -106,8 +100,7 @@ class LineasCapturadas extends Model
     }
 
     /**
-     * Verificar si tiene snapshot válido
-     * @return bool
+     * Indica si el snapshot es válido.
      */
     public function hasValidSnapshot()
     {

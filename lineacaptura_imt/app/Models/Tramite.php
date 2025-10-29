@@ -19,7 +19,9 @@ class Tramite extends Model
         'recargos', 'multa_correccionfiscal', 'compensacion', 'saldo_favor'
     ];
 
-    // Relación con Dependencia
+    /**
+     * Relación: Tramite pertenece a una dependencia.
+     */
     public function dependencia()
     {
         return $this->belongsTo(Dependencia::class, 'clave_dependencia_siglas', 'clave_dependencia');
@@ -28,5 +30,5 @@ class Tramite extends Model
     // Campos de fechas
     public $timestamps = true;
 
-    // LA FUNCIÓN 'transacciones()' HA SIDO ELIMINADA PARA NO CAUSAR EL ERROR
+    //
 }

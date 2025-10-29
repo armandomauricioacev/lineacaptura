@@ -15,7 +15,9 @@ class Dependencia extends Model
     // Campos de fechas
     public $timestamps = true;
 
-    // Relación con los trámites (si la dependencia tiene varios trámites)
+    /**
+     * Relación: Dependencia tiene muchos trámites.
+     */
     public function tramites()
     {
         return $this->hasMany(Tramite::class, 'clave_dependencia_siglas', 'clave_dependencia');

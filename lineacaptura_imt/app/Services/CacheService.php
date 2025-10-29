@@ -19,7 +19,7 @@ class CacheService
     const TRAMITES_BY_DEPENDENCIA_KEY = 'tramites_dependencia_';
 
     /**
-     * Obtener todas las dependencias con cache
+     * Obtiene todas las dependencias usando cache.
      */
     public function getDependencias()
     {
@@ -30,7 +30,7 @@ class CacheService
     }
 
     /**
-     * Obtener trámites por dependencia con cache
+     * Obtener trámites tipo 'P' con cache (independiente de la dependencia).
      */
     public function getTramitesByDependencia($dependenciaId)
     {
@@ -38,16 +38,13 @@ class CacheService
         
         return Cache::remember($cacheKey, self::CACHE_TTL, function () use ($dependenciaId) {
             Log::info('Cache miss: Cargando trámites desde BD', ['dependencia_id' => $dependenciaId]);
-            
-            $dependencia = Dependencia::findOrFail($dependenciaId);
-            return Tramite::where('clave_tramite', 'like', '%' . $dependencia->clave_dependencia . '%')
-                ->where('tipo_agrupador', 'P')
-                ->get();
+            // Ignorar clave_dependencia y unidad_administrativa; listar todos los trámites tipo 'P'
+            return Tramite::where('tipo_agrupador', 'P')->get();
         });
     }
 
     /**
-     * Obtener dependencia específica con cache
+     * Obtiene una dependencia por ID usando cache.
      */
     public function getDependencia($dependenciaId)
     {
@@ -60,7 +57,7 @@ class CacheService
     }
 
     /**
-     * Obtener trámites específicos con cache
+     * Obtiene trámites por IDs usando cache.
      */
     public function getTramites(array $tramiteIds)
     {
@@ -76,7 +73,7 @@ class CacheService
     }
 
     /**
-     * Limpiar cache de dependencias
+     * Limpia el cache de dependencias.
      */
     public function clearDependenciasCache()
     {
@@ -85,7 +82,7 @@ class CacheService
     }
 
     /**
-     * Limpiar cache de trámites por dependencia
+     * Limpia el cache de trámites (uno o todos).
      */
     public function clearTramitesCache($dependenciaId = null)
     {
@@ -105,7 +102,7 @@ class CacheService
     }
 
     /**
-     * Limpiar todo el cache relacionado
+     * Limpia todos los caches del sistema.
      */
     public function clearAllCache()
     {
@@ -115,7 +112,7 @@ class CacheService
     }
 
     /**
-     * Obtener estadísticas del cache
+     * Devuelve estado de caches y conteos.
      */
     public function getCacheStats()
     {
