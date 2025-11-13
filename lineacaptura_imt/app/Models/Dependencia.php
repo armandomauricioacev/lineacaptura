@@ -10,7 +10,9 @@ class Dependencia extends Model
     protected $table = 'dependencias';
 
     // Campos que se pueden asignar masivamente
-    protected $fillable = ['nombre', 'clave_dependencia', 'unidad_administrativa'];
+    protected $fillable = [
+        'nombre', 'clave_dependencia', 'unidad_administrativa'
+    ];
 
     // Campos de fechas
     public $timestamps = true;

@@ -9,6 +9,7 @@ use App\Services\CacheService;
 use Illuminate\Http\Request;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 /**
  * Controlador principal del flujo de la Línea de Captura.
@@ -907,7 +908,34 @@ class LineaCapturaController extends Controller
         $satApiUrl = env('SAT_API_URL', 'https://api.sat.gob.mx/validacion/linea-captura');
         $satApiToken = env('SAT_API_TOKEN', null);
         $satApiKey = env('SAT_API_KEY', null);
+        $satSubscriptionKey = env('SAT_SUBSCRIPTION_KEY', null);
         $timeout = env('SAT_API_TIMEOUT', 30);
+        $connectTimeout = env('SAT_API_CONNECT_TIMEOUT', 10);
+        $curlVerbose = filter_var(env('SAT_CURL_VERBOSE', false), FILTER_VALIDATE_BOOLEAN);
+        $http2 = filter_var(env('SAT_HTTP2', false), FILTER_VALIDATE_BOOLEAN);
+        $apimTrace = filter_var(env('SAT_APIM_TRACE', false), FILTER_VALIDATE_BOOLEAN);
+        $acceptLanguage = env('SAT_ACCEPT_LANGUAGE', null);
+        $sendCorrelationId = filter_var(env('SAT_SEND_CORRELATION_ID', true), FILTER_VALIDATE_BOOLEAN);
+        $explicitCorrelationId = env('SAT_CORRELATION_ID', null);
+        // JWT/Authorization configuration
+        $jwtEnable = filter_var(env('SAT_JWT_ENABLE', false), FILTER_VALIDATE_BOOLEAN);
+        $jwtSecret = env('SAT_JWT_SECRET', null);
+        $jwtAud = env('SAT_JWT_AUD', 'www.sat.gob.mx');
+        $jwtIss = env('SAT_JWT_ISS', null);
+        $jwtSub = env('SAT_JWT_SUB', null);
+        $jwtExpSeconds = intval(env('SAT_JWT_EXP_SECONDS', 300));
+        $authScheme = strtoupper(env('SAT_AUTH_SCHEME', 'BEARER'));
+
+        // Uso exclusivo de variables de entorno (.env)
+        
+        // Configuración mTLS (certificado cliente y CA) desde .env
+        $clientCertPath = env('SAT_CLIENT_CERT_PATH', null);
+        $clientCertType = strtoupper(env('SAT_CLIENT_CERT_TYPE', 'PEM'));
+        $clientCertPassword = env('SAT_CLIENT_CERT_PASSWORD', null);
+        $clientKeyPath = env('SAT_CLIENT_KEY_PATH', null);
+        $clientKeyPassword = env('SAT_CLIENT_KEY_PASSWORD', null);
+        $caCertPath = env('SAT_CA_CERT_PATH', null);
+        $tlsVerify = filter_var(env('SAT_TLS_VERIFY', true), FILTER_VALIDATE_BOOLEAN);
         
         // Preparar headers para la petición
         $headers = [
@@ -916,9 +944,47 @@ class LineaCapturaController extends Controller
             'User-Agent: LineaCaptura-IMT/1.0'
         ];
         
-        // Agregar token de autenticación si está configurado
-        if ($satApiToken) {
-            $headers[] = 'Authorization: Bearer ' . $satApiToken;
+        // Accept-Language si se configura (por defecto es-MX)
+        if ($acceptLanguage) {
+            $headers[] = 'Accept-Language: ' . $acceptLanguage;
+        }
+        
+        // Opcional: Ocp-Apim-Trace para debug en APIM
+        if ($apimTrace) {
+            $headers[] = 'Ocp-Apim-Trace: true';
+        }
+        
+        // Correlation ID para trazabilidad en Azure/APIM
+        $correlationId = $explicitCorrelationId ?: Str::uuid()->toString();
+        if ($sendCorrelationId) {
+            $headers[] = 'x-correlation-id: ' . $correlationId;
+        }
+        
+        // Agregar token de autenticación (JWT HS256 opcional)
+        $authorizationToken = null;
+        if ($jwtEnable && $jwtSecret) {
+            $now = time();
+            $payload = [
+                'aud' => $jwtAud,
+                'iat' => $now,
+                'exp' => $now + max(60, $jwtExpSeconds),
+            ];
+            if (!empty($jwtIss)) { $payload['iss'] = $jwtIss; }
+            if (!empty($jwtSub)) { $payload['sub'] = $jwtSub; }
+            // JTI con correlationId para trazabilidad
+            $payload['jti'] = ($explicitCorrelationId ?: Str::uuid()->toString());
+
+            $authorizationToken = $this->generateJwtHs256($payload, $jwtSecret);
+        } elseif ($satApiToken) {
+            $authorizationToken = $satApiToken;
+        }
+
+        if ($authorizationToken) {
+            if ($authScheme === 'PLAIN') {
+                $headers[] = 'Authorization: ' . $authorizationToken;
+            } else {
+                $headers[] = 'Authorization: Bearer ' . $authorizationToken;
+            }
         }
         
         // Agregar API Key si está configurada
@@ -926,26 +992,73 @@ class LineaCapturaController extends Controller
             $headers[] = 'X-API-Key: ' . $satApiKey;
         }
         
+        // Agregar clave de suscripción de Azure API Management si está configurada
+        if ($satSubscriptionKey) {
+            $headers[] = 'Ocp-Apim-Subscription-Key: ' . $satSubscriptionKey;
+            // Fallback: algunas APIs de Azure requieren query param 'subscription-key'
+            // Añadimos el parámetro también en la URL para máxima compatibilidad
+            if (stripos($satApiUrl, 'subscription-key=') === false) {
+                $delimiter = (strpos($satApiUrl, '?') !== false) ? '&' : '?';
+                $satApiUrl .= $delimiter . 'subscription-key=' . urlencode($satSubscriptionKey);
+            }
+        }
+        
         // Inicializar cURL
         $curl = curl_init();
         
-        curl_setopt_array($curl, [
+        // Construir opciones cURL con soporte para mTLS
+        $curlOpts = [
             CURLOPT_URL => $satApiUrl,
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_ENCODING => '',
             CURLOPT_MAXREDIRS => 10,
             CURLOPT_TIMEOUT => $timeout,
             CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+            CURLOPT_HTTP_VERSION => $http2 ? CURL_HTTP_VERSION_2TLS : CURL_HTTP_VERSION_1_1,
             CURLOPT_CUSTOMREQUEST => 'POST',
             CURLOPT_POSTFIELDS => json_encode($jsonData),
             CURLOPT_HTTPHEADER => $headers,
-            CURLOPT_SSL_VERIFYPEER => true,
-            CURLOPT_SSL_VERIFYHOST => 2,
-        ]);
+        ];
+        
+        // Tiempo de conexión y verbose opcional
+        $curlOpts[CURLOPT_CONNECTTIMEOUT] = $connectTimeout;
+        if ($curlVerbose) {
+            $curlOpts[CURLOPT_VERBOSE] = true;
+        }
+
+        // Verificación TLS (recomendada en producción)
+        $curlOpts[CURLOPT_SSL_VERIFYPEER] = $tlsVerify;
+        $curlOpts[CURLOPT_SSL_VERIFYHOST] = $tlsVerify ? 2 : 0;
+
+        // Certificado de cliente (mTLS)
+        if ($clientCertPath) {
+            $curlOpts[CURLOPT_SSLCERT] = $clientCertPath;
+            if ($clientCertType) {
+                $curlOpts[CURLOPT_SSLCERTTYPE] = $clientCertType;
+            }
+            if ($clientCertPassword) {
+                $curlOpts[CURLOPT_SSLCERTPASSWD] = $clientCertPassword;
+            }
+        }
+
+        // Llave privada separada (cuando el cert es PEM y la llave va aparte)
+        if ($clientKeyPath) {
+            $curlOpts[CURLOPT_SSLKEY] = $clientKeyPath;
+            if ($clientKeyPassword) {
+                $curlOpts[CURLOPT_SSLKEYPASSWD] = $clientKeyPassword;
+            }
+        }
+
+        // Certificado de CA/chain proporcionado por SAT
+        if ($caCertPath) {
+            $curlOpts[CURLOPT_CAINFO] = $caCertPath;
+        }
+
+        curl_setopt_array($curl, $curlOpts);
         
         $response = curl_exec($curl);
         $httpCode = curl_getinfo($curl, CURLINFO_HTTP_CODE);
+        $contentType = curl_getinfo($curl, CURLINFO_CONTENT_TYPE);
         $error = curl_error($curl);
         
         curl_close($curl);
@@ -955,17 +1068,20 @@ class LineaCapturaController extends Controller
             return [
                 'exito' => false,
                 'error' => 'Error de conexión con la API del SAT: ' . $error,
-                'codigo_http' => 0
+                'codigo_http' => 0,
+                'correlation_id' => $correlationId
             ];
         }
         
         // Verificar código de respuesta HTTP
-        if ($httpCode !== 200) {
+        if ($httpCode < 200 || $httpCode >= 300) {
             return [
                 'exito' => false,
                 'error' => 'La API del SAT respondió con código HTTP: ' . $httpCode,
                 'codigo_http' => $httpCode,
-                'respuesta_cruda' => $response
+                'respuesta_cruda' => $response,
+                'content_type' => $contentType,
+                'correlation_id' => $correlationId
             ];
         }
         
@@ -977,14 +1093,17 @@ class LineaCapturaController extends Controller
                 'exito' => false,
                 'error' => 'Error al decodificar la respuesta JSON del SAT: ' . json_last_error_msg(),
                 'codigo_http' => $httpCode,
-                'respuesta_cruda' => $response
+                'respuesta_cruda' => $response,
+                'correlation_id' => $correlationId
             ];
         }
         
         return [
             'exito' => true,
             'datos' => $responseData,
-            'codigo_http' => $httpCode
+            'codigo_http' => $httpCode,
+            'content_type' => $contentType,
+            'correlation_id' => $correlationId
         ];
     }
 
@@ -994,54 +1113,68 @@ class LineaCapturaController extends Controller
     private function procesarRespuestaSat(array $datosRespuesta, string $respuestaCompleta): array
     {
         try {
-            // Verificar estructura básica de la respuesta
-            if (!isset($datosRespuesta['Acuse'])) {
-                return [
-                    'exito' => false,
-                    'mensaje' => 'La respuesta del SAT no contiene la estructura esperada (falta Acuse)',
-                    'errores' => [
-                        'estructura_recibida' => array_keys($datosRespuesta),
-                        'datos_completos' => $datosRespuesta
-                    ]
-                ];
-            }
-
-            $acuse = $datosRespuesta['Acuse'];
-            
-            // Extraer HTML codificado
-            $htmlCodificado = $acuse['HTML'] ?? null;
-            $htmlDecodificado = null;
-            
-            if ($htmlCodificado) {
-                $htmlDecodificado = html_entity_decode(base64_decode($htmlCodificado), ENT_QUOTES | ENT_HTML5, 'UTF-8');
-            }
-
-            // Extraer datos principales
-            $resultado = [
+            $resultadoBase = [
                 'exito' => true,
                 'mensaje' => 'Respuesta del SAT procesada exitosamente',
                 'json_completo' => $datosRespuesta,
-                'id_documento' => $acuse['IdDocumento'] ?? null,
-                'tipo_pago' => $acuse['TipoPago'] ?? null,
-                'html_codificado' => $htmlCodificado,
-                'html_decodificado' => $htmlDecodificado,
-                'resultado' => $acuse['Resultado'] ?? null,
-                'linea_captura' => $acuse['LineaCaptura'] ?? null,
-                'importe_sat' => $acuse['Importe'] ?? null,
-                'fecha_vigencia_sat' => $acuse['FechaVigencia'] ?? null,
-                'errores' => $acuse['Errores'] ?? null,
-                'datos_adicionales' => [
-                    'solicitud_id' => $acuse['Solicitud'] ?? null,
-                    'fecha_proceso' => $acuse['FechaProceso'] ?? null,
-                    'codigo_respuesta' => $acuse['CodigoRespuesta'] ?? null
-                ]
             ];
 
-            // Validar que se recibió el HTML
+            // Caso 1: Estructura tipo Acuse { HTML, LineaCaptura, ... }
+            if (isset($datosRespuesta['Acuse']) && is_array($datosRespuesta['Acuse'])) {
+                $acuse = $datosRespuesta['Acuse'];
+                $htmlCodificado = $acuse['HTML'] ?? null;
+                $htmlDecodificado = $htmlCodificado ? html_entity_decode(base64_decode($htmlCodificado), ENT_QUOTES | ENT_HTML5, 'UTF-8') : null;
+
+                $resultado = array_merge($resultadoBase, [
+                    'id_documento' => $acuse['IdDocumento'] ?? null,
+                    'tipo_pago' => $acuse['TipoPago'] ?? null,
+                    'html_codificado' => $htmlCodificado,
+                    'html_decodificado' => $htmlDecodificado,
+                    'resultado' => $acuse['Resultado'] ?? null,
+                    'linea_captura' => $acuse['LineaCaptura'] ?? null,
+                    'importe_sat' => $acuse['Importe'] ?? null,
+                    'fecha_vigencia_sat' => $acuse['FechaVigencia'] ?? null,
+                    'errores' => $acuse['Errores'] ?? null,
+                    'datos_adicionales' => [
+                        'solicitud_id' => $acuse['Solicitud'] ?? null,
+                        'fecha_proceso' => $acuse['FechaProceso'] ?? null,
+                        'codigo_respuesta' => $acuse['CodigoRespuesta'] ?? null
+                    ]
+                ]);
+
+                if (!$htmlCodificado) {
+                    $resultado['exito'] = false;
+                    $resultado['mensaje'] = 'La respuesta del SAT no contiene el HTML codificado';
+                    $resultado['errores'] = ['html_faltante' => 'No se encontró HTML en la respuesta'];
+                }
+
+                return $resultado;
+            }
+
+            // Caso 2: Estructura directa con campos "formatoHTML" y "linea Captura"
+            $htmlCodificado = $this->buscarCampoFlexible($datosRespuesta, ['formatoHTML', 'FormatoHTML', 'htmlCodificado', 'HTML']);
+            $lineaCaptura = $this->buscarCampoFlexible($datosRespuesta, ['linea Captura', 'LineaCaptura', 'lineaCaptura', 'linea_captura']);
+            $importe = $this->buscarCampoFlexible($datosRespuesta, ['importe', 'Importe', 'monto', 'Monto']);
+            $vigencia = $this->buscarCampoFlexible($datosRespuesta, ['fechaVigencia', 'FechaVigencia', 'vigencia', 'Vigencia']);
+
+            if ($htmlCodificado) {
+                $htmlDecodificado = html_entity_decode(base64_decode($htmlCodificado), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            } else {
+                $htmlDecodificado = null;
+            }
+
+            $resultado = array_merge($resultadoBase, [
+                'html_codificado' => $htmlCodificado,
+                'html_decodificado' => $htmlDecodificado,
+                'linea_captura' => $lineaCaptura,
+                'importe_sat' => $importe,
+                'fecha_vigencia_sat' => $vigencia,
+            ]);
+
             if (!$htmlCodificado) {
                 $resultado['exito'] = false;
                 $resultado['mensaje'] = 'La respuesta del SAT no contiene el HTML codificado';
-                $resultado['errores'] = ['html_faltante' => 'No se encontró HTML en la respuesta'];
+                $resultado['errores'] = ['html_faltante' => 'No se encontró HTML/formatoHTML en la respuesta'];
             }
 
             return $resultado;
@@ -1056,5 +1189,46 @@ class LineaCapturaController extends Controller
                 ]
             ];
         }
+    }
+
+    /**
+     * Genera un JWT HS256 con claims dados.
+     */
+    private function generateJwtHs256(array $claims, string $secret): string
+    {
+        $header = ['alg' => 'HS256', 'typ' => 'JWT'];
+        $segments = [];
+        $segments[] = $this->base64UrlEncode(json_encode($header));
+        $segments[] = $this->base64UrlEncode(json_encode($claims));
+        $signingInput = implode('.', $segments);
+        $signature = hash_hmac('sha256', $signingInput, $secret, true);
+        $segments[] = $this->base64UrlEncode($signature);
+        return implode('.', $segments);
+    }
+
+    private function base64UrlEncode(string $data): string
+    {
+        return rtrim(strtr(base64_encode($data), '+/', '-_'), '=');
+    }
+
+    /**
+     * Busca un campo en un arreglo de manera flexible (ignora mayúsculas, espacios y guiones bajos).
+     */
+    private function buscarCampoFlexible(array $arr, array $posiblesClaves)
+    {
+        $normalizar = function ($s) {
+            return strtolower(str_replace([' ', '_'], '', $s));
+        };
+        $mapa = [];
+        foreach ($arr as $k => $v) {
+            $mapa[$normalizar($k)] = $v;
+        }
+        foreach ($posiblesClaves as $clave) {
+            $n = $normalizar($clave);
+            if (array_key_exists($n, $mapa)) {
+                return $mapa[$n];
+            }
+        }
+        return null;
     }
 }
