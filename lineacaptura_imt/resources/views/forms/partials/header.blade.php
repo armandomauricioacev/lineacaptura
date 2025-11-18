@@ -11,7 +11,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
   <title>@yield('title', 'Línea de Captura')</title>
-  <link rel="icon" href="/favicon.ico">
+  <link rel="icon" type="image/png" href="{{ asset('img/imt.png') }}">
+
 
   {{-- CSS oficial GOB.MX (PROD v3) --}}
   <link rel="stylesheet" href="{{ $GOB_CSS }}">
