@@ -148,22 +148,7 @@ $resultadoDecodificacion = HtmlDecoderService::obtenerYDecodificarCodigo();
                  @if(isset($respuestaSat['codigo_http']))
                      <p><strong>Código HTTP:</strong> {{ $respuestaSat['codigo_http'] }}</p>
                  @endif
-                 <p><em>Nota: Esto es normal mientras no tengas configurada la URL real de la API del SAT.</em></p>
                  
-                 <!-- Recordatorio de configuración -->
-                 <div style="background: #fef3c7; border: 1px solid #f59e0b; border-radius: 6px; padding: 12px; margin-top: 15px; color: #92400e;">
-                     <strong>Recordatorio de Configuración:</strong>
-                     <p style="margin: 8px 0 4px 0;">Cuando recibas las credenciales del SAT, configura:</p>
-                     <ul style="margin: 5px 0; padding-left: 20px; font-size: 13px;">
-                         <li><strong>Archivo:</strong> <code>.env</code> (en la raíz del proyecto)</li>
-                         <li><strong>Variable:</strong> <code>SAT_API_URL=https://url-real-del-sat.gob.mx/api</code></li>
-                         <li><strong>Token (si aplica):</strong> <code>SAT_API_TOKEN=tu_token_aqui</code></li>
-                         <li><strong>Key (si aplica):</strong> <code>SAT_API_KEY=tu_key_aqui</code></li>
-                     </ul>
-                     <p style="margin: 8px 0 0 0; font-size: 12px;">
-                         <strong>Tip:</strong> Puedes copiar las variables desde <code>.env.example</code> y solo cambiar los valores.
-                     </p>
-                 </div>
              </div>
 
             <!-- Mostrar respuesta cruda si existe -->
@@ -237,6 +222,38 @@ $resultadoDecodificacion = HtmlDecoderService::obtenerYDecodificarCodigo();
     </div>
 </div>
 <br>
+<!-- SECCIÓN DE DEBUGGING -->
+@if(config('app.debug'))
+<div class="caja" style="background: #fff3cd; border-color: #ffc107;">
+    <h4 style="color: #856404;">🔍 Información de Debugging</h4>
+    
+    <div style="margin-top: 15px;">
+        <h5>Configuración de la Petición:</h5>
+        <ul style="font-family: monospace; font-size: 12px;">
+            <li><strong>URL:</strong> {{ env('SAT_API_URL') }}</li>
+            <li><strong>Tiene Subscription Key:</strong> {{ env('SAT_SUBSCRIPTION_KEY') ? '✅ Sí' : '❌ No' }}</li>
+            <li><strong>JWT Habilitado:</strong> {{ env('SAT_JWT_ENABLE') ? '✅ Sí' : '❌ No' }}</li>
+            <li><strong>Tiene JWT Secret:</strong> {{ env('SAT_JWT_SECRET') ? '✅ Sí' : '❌ No' }}</li>
+            <li><strong>Certificado:</strong> {{ env('SAT_CLIENT_CERT_PATH') ?: '❌ No configurado' }}</li>
+            <li><strong>Timeout:</strong> {{ env('SAT_API_TIMEOUT', 30) }}s</li>
+        </ul>
+    </div>
+    
+    @if(isset($respuestaSat['correlation_id']))
+    <div style="margin-top: 10px;">
+        <strong>Correlation ID:</strong> <code>{{ $respuestaSat['correlation_id'] }}</code>
+        <br><small>Usa este ID para rastrear la petición en los logs</small>
+    </div>
+    @endif
+    
+    @if(isset($respuestaSat['verbose_output']))
+    <div style="margin-top: 15px;">
+        <h5>Output Verbose de cURL:</h5>
+        <pre style="background: #f8f9fa; padding: 10px; border-radius: 4px; font-size: 11px; max-height: 300px; overflow-y: auto;">{{ $respuestaSat['verbose_output'] }}</pre>
+    </div>
+    @endif
+</div>
+@endif
 @endsection
 
 @push('scripts')

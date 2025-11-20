@@ -902,210 +902,293 @@ class LineaCapturaController extends Controller
     /**
      * Envía JSON al SAT y retorna respuesta.
      */
-    private function enviarJsonASat($jsonData)
-    {
-        // Obtener configuración de la API del SAT desde el archivo .env
-        $satApiUrl = env('SAT_API_URL', 'https://api.sat.gob.mx/validacion/linea-captura');
-        $satApiToken = env('SAT_API_TOKEN', null);
-        $satApiKey = env('SAT_API_KEY', null);
-        $satSubscriptionKey = env('SAT_SUBSCRIPTION_KEY', null);
-        $timeout = env('SAT_API_TIMEOUT', 30);
-        $connectTimeout = env('SAT_API_CONNECT_TIMEOUT', 10);
-        $curlVerbose = filter_var(env('SAT_CURL_VERBOSE', false), FILTER_VALIDATE_BOOLEAN);
-        $http2 = filter_var(env('SAT_HTTP2', false), FILTER_VALIDATE_BOOLEAN);
-        $apimTrace = filter_var(env('SAT_APIM_TRACE', false), FILTER_VALIDATE_BOOLEAN);
-        $acceptLanguage = env('SAT_ACCEPT_LANGUAGE', null);
-        $sendCorrelationId = filter_var(env('SAT_SEND_CORRELATION_ID', true), FILTER_VALIDATE_BOOLEAN);
-        $explicitCorrelationId = env('SAT_CORRELATION_ID', null);
-        // JWT/Authorization configuration
-        $jwtEnable = filter_var(env('SAT_JWT_ENABLE', false), FILTER_VALIDATE_BOOLEAN);
-        $jwtSecret = env('SAT_JWT_SECRET', null);
-        $jwtAud = env('SAT_JWT_AUD', 'www.sat.gob.mx');
-        $jwtIss = env('SAT_JWT_ISS', null);
-        $jwtSub = env('SAT_JWT_SUB', null);
-        $jwtExpSeconds = intval(env('SAT_JWT_EXP_SECONDS', 300));
-        $authScheme = strtoupper(env('SAT_AUTH_SCHEME', 'BEARER'));
-
-        // Uso exclusivo de variables de entorno (.env)
-        
-        // Configuración mTLS (certificado cliente y CA) desde .env
-        $clientCertPath = env('SAT_CLIENT_CERT_PATH', null);
-        $clientCertType = strtoupper(env('SAT_CLIENT_CERT_TYPE', 'PEM'));
-        $clientCertPassword = env('SAT_CLIENT_CERT_PASSWORD', null);
-        $clientKeyPath = env('SAT_CLIENT_KEY_PATH', null);
-        $clientKeyPassword = env('SAT_CLIENT_KEY_PASSWORD', null);
-        $caCertPath = env('SAT_CA_CERT_PATH', null);
-        $tlsVerify = filter_var(env('SAT_TLS_VERIFY', true), FILTER_VALIDATE_BOOLEAN);
-        
-        // Preparar headers para la petición
-        $headers = [
-            'Content-Type: application/json',
-            'Accept: application/json',
-            'User-Agent: LineaCaptura-IMT/1.0'
+    /**
+ * Envía JSON al SAT y retorna respuesta.
+ */
+private function enviarJsonASat($jsonData)
+{
+    // 1. OBTENER CONFIGURACIÓN
+    $satApiUrl = env('SAT_API_URL');
+    $satSubscriptionKey = env('SAT_SUBSCRIPTION_KEY');
+    $satApiKey = env('SAT_API_KEY', null);
+    $timeout = env('SAT_API_TIMEOUT', 60);
+    $connectTimeout = env('SAT_API_CONNECT_TIMEOUT', 30);
+    
+    // JWT Configuration
+    $jwtEnable = filter_var(env('SAT_JWT_ENABLE', false), FILTER_VALIDATE_BOOLEAN);
+    $jwtSecret = env('SAT_JWT_SECRET', null);
+    $jwtAud = env('SAT_JWT_AUD', 'www.sat.gob.mx');
+    $jwtIss = env('SAT_JWT_ISS', null);
+    $jwtExpSeconds = intval(env('SAT_JWT_EXP_SECONDS', 300));
+    
+    // Certificados
+    $clientCertPath = env('SAT_CLIENT_CERT_PATH');
+    $clientCertType = strtoupper(env('SAT_CLIENT_CERT_TYPE', 'PEM'));
+    $clientCertPassword = env('SAT_CLIENT_CERT_PASSWORD', null);
+    $tlsVerify = filter_var(env('SAT_TLS_VERIFY', true), FILTER_VALIDATE_BOOLEAN);
+    $curlVerbose = filter_var(env('SAT_CURL_VERBOSE', false), FILTER_VALIDATE_BOOLEAN);
+    
+    // Correlation ID para trazabilidad
+    $correlationId = Str::uuid()->toString();
+    
+    // LOG DE CONFIGURACIÓN (para debugging)
+    Log::info('Configuración SAT API', [
+        'url' => $satApiUrl,
+        'tiene_subscription_key' => !empty($satSubscriptionKey),
+        'tiene_jwt_secret' => !empty($jwtSecret),
+        'jwt_habilitado' => $jwtEnable,
+        'cert_path' => $clientCertPath,
+        'cert_type' => $clientCertType,
+        'correlation_id' => $correlationId
+    ]);
+    
+    // 2. VALIDACIONES PREVIAS
+    if (empty($satApiUrl)) {
+        return [
+            'exito' => false,
+            'error' => 'SAT_API_URL no está configurada en .env',
+            'codigo_http' => 0
         ];
-        
-        // Accept-Language si se configura (por defecto es-MX)
-        if ($acceptLanguage) {
-            $headers[] = 'Accept-Language: ' . $acceptLanguage;
-        }
-        
-        // Opcional: Ocp-Apim-Trace para debug en APIM
-        if ($apimTrace) {
-            $headers[] = 'Ocp-Apim-Trace: true';
-        }
-        
-        // Correlation ID para trazabilidad en Azure/APIM
-        $correlationId = $explicitCorrelationId ?: Str::uuid()->toString();
-        if ($sendCorrelationId) {
-            $headers[] = 'x-correlation-id: ' . $correlationId;
-        }
-        
-        // Agregar token de autenticación (JWT HS256 opcional)
-        $authorizationToken = null;
-        if ($jwtEnable && $jwtSecret) {
-            $now = time();
-            $payload = [
-                'aud' => $jwtAud,
-                'iat' => $now,
-                'exp' => $now + max(60, $jwtExpSeconds),
-            ];
-            if (!empty($jwtIss)) { $payload['iss'] = $jwtIss; }
-            if (!empty($jwtSub)) { $payload['sub'] = $jwtSub; }
-            // JTI con correlationId para trazabilidad
-            $payload['jti'] = ($explicitCorrelationId ?: Str::uuid()->toString());
-
-            $authorizationToken = $this->generateJwtHs256($payload, $jwtSecret);
-        } elseif ($satApiToken) {
-            $authorizationToken = $satApiToken;
-        }
-
-        if ($authorizationToken) {
-            if ($authScheme === 'PLAIN') {
-                $headers[] = 'Authorization: ' . $authorizationToken;
-            } else {
-                $headers[] = 'Authorization: Bearer ' . $authorizationToken;
-            }
-        }
-        
-        // Agregar API Key si está configurada
-        if ($satApiKey) {
-            $headers[] = 'X-API-Key: ' . $satApiKey;
-        }
-        
-        // Agregar clave de suscripción de Azure API Management si está configurada
-        if ($satSubscriptionKey) {
-            $headers[] = 'Ocp-Apim-Subscription-Key: ' . $satSubscriptionKey;
-            // Fallback: algunas APIs de Azure requieren query param 'subscription-key'
-            // Añadimos el parámetro también en la URL para máxima compatibilidad
-            if (stripos($satApiUrl, 'subscription-key=') === false) {
-                $delimiter = (strpos($satApiUrl, '?') !== false) ? '&' : '?';
-                $satApiUrl .= $delimiter . 'subscription-key=' . urlencode($satSubscriptionKey);
-            }
-        }
-        
-        // Inicializar cURL
-        $curl = curl_init();
-        
-        // Construir opciones cURL con soporte para mTLS
-        $curlOpts = [
-            CURLOPT_URL => $satApiUrl,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_ENCODING => '',
-            CURLOPT_MAXREDIRS => 10,
-            CURLOPT_TIMEOUT => $timeout,
-            CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_HTTP_VERSION => $http2 ? CURL_HTTP_VERSION_2TLS : CURL_HTTP_VERSION_1_1,
-            CURLOPT_CUSTOMREQUEST => 'POST',
-            CURLOPT_POSTFIELDS => json_encode($jsonData),
-            CURLOPT_HTTPHEADER => $headers,
+    }
+    
+    if (empty($satSubscriptionKey)) {
+        return [
+            'exito' => false,
+            'error' => 'SAT_SUBSCRIPTION_KEY no está configurada en .env',
+            'codigo_http' => 0
         ];
-        
-        // Tiempo de conexión y verbose opcional
-        $curlOpts[CURLOPT_CONNECTTIMEOUT] = $connectTimeout;
-        if ($curlVerbose) {
-            $curlOpts[CURLOPT_VERBOSE] = true;
+    }
+    
+    // 3. VALIDAR CERTIFICADO
+    if ($clientCertPath) {
+        // Resolver ruta absoluta
+        if (!preg_match('/^[A-Za-z]:\\\\|^\//', $clientCertPath)) {
+            $clientCertPath = base_path($clientCertPath);
         }
-
-        // Verificación TLS (recomendada en producción)
-        $curlOpts[CURLOPT_SSL_VERIFYPEER] = $tlsVerify;
-        $curlOpts[CURLOPT_SSL_VERIFYHOST] = $tlsVerify ? 2 : 0;
-
-        // Certificado de cliente (mTLS)
-        if ($clientCertPath) {
-            $curlOpts[CURLOPT_SSLCERT] = $clientCertPath;
-            if ($clientCertType) {
-                $curlOpts[CURLOPT_SSLCERTTYPE] = $clientCertType;
-            }
-            if ($clientCertPassword) {
-                $curlOpts[CURLOPT_SSLCERTPASSWD] = $clientCertPassword;
-            }
-        }
-
-        // Llave privada separada (cuando el cert es PEM y la llave va aparte)
-        if ($clientKeyPath) {
-            $curlOpts[CURLOPT_SSLKEY] = $clientKeyPath;
-            if ($clientKeyPassword) {
-                $curlOpts[CURLOPT_SSLKEYPASSWD] = $clientKeyPassword;
-            }
-        }
-
-        // Certificado de CA/chain proporcionado por SAT
-        if ($caCertPath) {
-            $curlOpts[CURLOPT_CAINFO] = $caCertPath;
-        }
-
-        curl_setopt_array($curl, $curlOpts);
         
-        $response = curl_exec($curl);
-        $httpCode = curl_getinfo($curl, CURLINFO_HTTP_CODE);
-        $contentType = curl_getinfo($curl, CURLINFO_CONTENT_TYPE);
-        $error = curl_error($curl);
-        
-        curl_close($curl);
-        
-        // Verificar errores de conexión
-        if ($error) {
+        if (!file_exists($clientCertPath)) {
+            Log::error('Certificado no encontrado', [
+                'ruta_configurada' => env('SAT_CLIENT_CERT_PATH'),
+                'ruta_resuelta' => $clientCertPath,
+                'base_path' => base_path()
+            ]);
+            
             return [
                 'exito' => false,
-                'error' => 'Error de conexión con la API del SAT: ' . $error,
+                'error' => "Certificado no encontrado en: {$clientCertPath}",
                 'codigo_http' => 0,
-                'correlation_id' => $correlationId
+                'sugerencia' => 'Verifica que la ruta del certificado sea correcta y que el archivo exista'
             ];
         }
         
-        // Verificar código de respuesta HTTP
-        if ($httpCode < 200 || $httpCode >= 300) {
+        // Verificar permisos de lectura
+        if (!is_readable($clientCertPath)) {
             return [
                 'exito' => false,
-                'error' => 'La API del SAT respondió con código HTTP: ' . $httpCode,
-                'codigo_http' => $httpCode,
-                'respuesta_cruda' => $response,
-                'content_type' => $contentType,
-                'correlation_id' => $correlationId
+                'error' => "No se puede leer el certificado en: {$clientCertPath}",
+                'codigo_http' => 0,
+                'sugerencia' => 'Verifica los permisos del archivo'
             ];
         }
         
-        // Decodificar respuesta JSON
-        $responseData = json_decode($response, true);
+        Log::info('Certificado validado', [
+            'ruta' => $clientCertPath,
+            'tamano' => filesize($clientCertPath),
+            'legible' => is_readable($clientCertPath)
+        ]);
+    }
+    
+    // 4. CONSTRUIR HEADERS
+    $headers = [
+        'Content-Type: application/json',
+        'Accept: application/json',
+        'User-Agent: LineaCaptura-IMT/1.0',
+        'x-correlation-id: ' . $correlationId,
+        'Accept-Language: es-MX'
+    ];
+    
+    // Agregar Subscription Key (REQUERIDO)
+    $headers[] = 'Ocp-Apim-Subscription-Key: ' . $satSubscriptionKey;
+    
+    // Agregar API Key si existe
+    if ($satApiKey) {
+        $headers[] = 'X-API-Key: ' . $satApiKey;
+    }
+    
+    // 5. GENERAR JWT SI ESTÁ HABILITADO
+    if ($jwtEnable && $jwtSecret) {
+        $now = time();
+        $payload = [
+            'aud' => $jwtAud,
+            'iat' => $now,
+            'exp' => $now + $jwtExpSeconds,
+            'jti' => $correlationId
+        ];
         
-        if (json_last_error() !== JSON_ERROR_NONE) {
-            return [
-                'exito' => false,
-                'error' => 'Error al decodificar la respuesta JSON del SAT: ' . json_last_error_msg(),
-                'codigo_http' => $httpCode,
-                'respuesta_cruda' => $response,
-                'correlation_id' => $correlationId
-            ];
+        if (!empty($jwtIss)) {
+            $payload['iss'] = $jwtIss;
         }
+        
+        $jwt = $this->generateJwtHs256($payload, $jwtSecret);
+        $headers[] = 'Authorization: Bearer ' . $jwt;
+        
+        Log::info('JWT generado', [
+            'payload' => $payload,
+            'jwt_length' => strlen($jwt)
+        ]);
+    }
+    
+    // LOG DE HEADERS (sin valores sensibles)
+    Log::info('Headers preparados', [
+        'cantidad' => count($headers),
+        'tiene_subscription_key' => str_contains(implode('|', $headers), 'Ocp-Apim-Subscription-Key'),
+        'tiene_authorization' => str_contains(implode('|', $headers), 'Authorization')
+    ]);
+    
+    // 6. CONFIGURAR cURL
+    $curl = curl_init();
+    
+    $curlOpts = [
+        CURLOPT_URL => $satApiUrl,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_ENCODING => '',
+        CURLOPT_MAXREDIRS => 10,
+        CURLOPT_TIMEOUT => $timeout,
+        CURLOPT_CONNECTTIMEOUT => $connectTimeout,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+        CURLOPT_CUSTOMREQUEST => 'POST',
+        CURLOPT_POSTFIELDS => json_encode($jsonData),
+        CURLOPT_HTTPHEADER => $headers,
+        CURLOPT_SSL_VERIFYPEER => $tlsVerify,
+        CURLOPT_SSL_VERIFYHOST => $tlsVerify ? 2 : 0,
+    ];
+    
+    // Agregar certificado cliente si existe
+    if ($clientCertPath) {
+        $curlOpts[CURLOPT_SSLCERT] = $clientCertPath;
+        $curlOpts[CURLOPT_SSLCERTTYPE] = $clientCertType;
+        
+        if ($clientCertPassword) {
+            $curlOpts[CURLOPT_SSLCERTPASSWD] = $clientCertPassword;
+        }
+    }
+    
+    // Verbose para debugging
+    if ($curlVerbose) {
+        $curlOpts[CURLOPT_VERBOSE] = true;
+        $verboseLog = fopen('php://temp', 'rw+');
+        $curlOpts[CURLOPT_STDERR] = $verboseLog;
+    }
+    
+    curl_setopt_array($curl, $curlOpts);
+    
+    // 7. EJECUTAR PETICIÓN
+    Log::info('Enviando petición al SAT', [
+        'url' => $satApiUrl,
+        'json_size' => strlen(json_encode($jsonData)),
+        'correlation_id' => $correlationId
+    ]);
+    
+    $response = curl_exec($curl);
+    $httpCode = curl_getinfo($curl, CURLINFO_HTTP_CODE);
+    $contentType = curl_getinfo($curl, CURLINFO_CONTENT_TYPE);
+    $error = curl_error($curl);
+    $curlInfo = curl_getinfo($curl);
+    
+    // Capturar verbose output
+    $verboseOutput = '';
+    if ($curlVerbose && isset($verboseLog)) {
+        rewind($verboseLog);
+        $verboseOutput = stream_get_contents($verboseLog);
+        fclose($verboseLog);
+    }
+    
+    curl_close($curl);
+    
+    // LOG DE RESPUESTA
+    Log::info('Respuesta del SAT recibida', [
+        'http_code' => $httpCode,
+        'content_type' => $contentType,
+        'response_size' => strlen($response),
+        'curl_error' => $error ?: 'ninguno',
+        'total_time' => $curlInfo['total_time'] ?? 0,
+        'correlation_id' => $correlationId
+    ]);
+    
+    // 8. PROCESAR ERRORES
+    if ($error) {
+        Log::error('Error de cURL', [
+            'error' => $error,
+            'http_code' => $httpCode,
+            'verbose_output' => $verboseOutput,
+            'correlation_id' => $correlationId
+        ]);
         
         return [
-            'exito' => true,
-            'datos' => $responseData,
+            'exito' => false,
+            'error' => 'Error de conexión con la API del SAT: ' . $error,
             'codigo_http' => $httpCode,
+            'curl_info' => $curlInfo,
+            'verbose_output' => $verboseOutput,
+            'correlation_id' => $correlationId
+        ];
+    }
+    
+    // 9. VALIDAR CÓDIGO HTTP
+    if ($httpCode < 200 || $httpCode >= 300) {
+        Log::error('Código HTTP de error', [
+            'http_code' => $httpCode,
+            'response' => substr($response, 0, 500),
+            'content_type' => $contentType,
+            'correlation_id' => $correlationId
+        ]);
+        
+        return [
+            'exito' => false,
+            'error' => "La API del SAT respondió con código HTTP: {$httpCode}",
+            'codigo_http' => $httpCode,
+            'respuesta_cruda' => $response,
             'content_type' => $contentType,
             'correlation_id' => $correlationId
         ];
     }
+    
+    // 10. DECODIFICAR JSON
+    $responseData = json_decode($response, true);
+    
+    if (json_last_error() !== JSON_ERROR_NONE) {
+        Log::error('Error al decodificar JSON', [
+            'json_error' => json_last_error_msg(),
+            'response' => substr($response, 0, 500),
+            'correlation_id' => $correlationId
+        ]);
+        
+        return [
+            'exito' => false,
+            'error' => 'Error al decodificar la respuesta JSON del SAT: ' . json_last_error_msg(),
+            'codigo_http' => $httpCode,
+            'respuesta_cruda' => $response,
+            'correlation_id' => $correlationId
+        ];
+    }
+    
+    // 11. ÉXITO
+    Log::info('Respuesta del SAT procesada exitosamente', [
+        'http_code' => $httpCode,
+        'tiene_acuse' => isset($responseData['Acuse']),
+        'tiene_html' => isset($responseData['Acuse']['HTML']),
+        'correlation_id' => $correlationId
+    ]);
+    
+    return [
+        'exito' => true,
+        'datos' => $responseData,
+        'codigo_http' => $httpCode,
+        'content_type' => $contentType,
+        'correlation_id' => $correlationId
+    ];
+}
 
     /**
      * Procesa respuesta del SAT y extrae datos clave.
